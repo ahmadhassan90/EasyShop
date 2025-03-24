@@ -3,6 +3,7 @@ name: Price Checker
 on:
   schedule:
     - cron: "0 * * * *"  # Runs every hour
+  workflow_dispatch:  # Allows manual trigger
 
 jobs:
   check_price:
@@ -20,5 +21,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Set up SQLite Database
+        run: |
+          python -c "import sqlite3; conn = sqlite3.connect('config.db'); cursor = conn.cursor(); cursor.execute(\"CREATE TABLE IF NOT EXISTS tracking (product_url TEXT PRIMARY KEY, min_price INTEGER, max_price INTEGER, sku TEXT)\"); conn.commit(); conn.close();"
+
       - name: Run Price Checker
-        run: python -c "from price_checker import check_price; check_price()"
+        env:
+          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        run: python price_checker.py
