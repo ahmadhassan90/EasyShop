@@ -3,34 +3,46 @@ import requests
 import sqlite3
 from bs4 import BeautifulSoup
 
-# Function to scrape price & SKU
+# Function to scrape price & SKU with debugging
 def get_price_and_sku(product_url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     try:
+        st.write(f"Fetching URL: {product_url}")  # Debug message
         response = requests.get(product_url, headers=headers)
         response.raise_for_status()
+        
         soup = BeautifulSoup(response.text, "html.parser")
+
+        # Debugging: Print HTML content
+        print("HTML Content:", soup.prettify()[:2000])  # Print first 2000 characters
+        st.write("🔍 Debug: Fetched HTML content successfully.")
 
         # Extract SKU
         sku_tag = soup.select_one("div.product-number span")
         product_sku = sku_tag.text.strip() if sku_tag else "SKU not found"
+        st.write(f"🆔 SKU Found: {product_sku}")
 
-        # Extract Price (Check multiple possible selectors)
-        price_tag = soup.select_one("span.price, span.value, span.product-price")  # Updated selectors
+        # Extract Price (Try multiple selectors)
+        price_tag = soup.select_one("span.price, span.value, span.product-price, div.product-price span")
+        
         if price_tag:
+            st.write(f"🔍 Debug: Found Price Tag - {price_tag.text.strip()}")
             price_text = price_tag.text.strip().replace("PKR", "").replace(",", "").strip()
             try:
                 product_price = float(price_text)
             except ValueError:
+                st.write("⚠️ Debug: Price conversion failed. Raw price text:", price_text)
                 product_price = None
         else:
+            st.write("❌ Debug: No price tag found.")
             product_price = None
 
         return product_price, product_sku
     except requests.exceptions.RequestException as e:
         st.error(f"Error fetching product: {e}")
+        print("Request Error:", e)  # Debugging in terminal
         return None, None
 
 # Initialize SQLite Database
@@ -61,7 +73,7 @@ def save_to_db(product_url, min_price, max_price, sku):
 init_db()
 
 # Streamlit UI
-st.title("🛍️ Khaadi Price Tracker")
+st.title("🛍️ Khaadi Price Tracker (Debug Mode)")
 
 # Session state for tracking UI updates
 if "price" not in st.session_state:
@@ -76,6 +88,7 @@ product_url = st.text_input("🔗 Enter Khaadi Product URL")
 
 if st.button("Check Price"):
     if product_url:
+        st.write("🔍 Debug: Checking price for URL:", product_url)
         price, sku = get_price_and_sku(product_url)
 
         if price:
