@@ -1,0 +1,24 @@
+name: Price Checker
+
+on:
+  schedule:
+    - cron: "0 * * * *"  # Runs every hour
+
+jobs:
+  check_price:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Price Checker
+        run: python -c "from price_checker import check_price; check_price()"
