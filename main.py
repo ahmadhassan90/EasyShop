@@ -1,105 +1,89 @@
 import streamlit as st
-import requests
 import sqlite3
+import requests
 from bs4 import BeautifulSoup
 
-# Function to scrape price & SKU
-def get_price_and_sku(product_url):
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-    try:
-        response = requests.get(product_url, headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        # Extract SKU
-        sku_tag = soup.select_one("div.product-number span")
-        product_sku = sku_tag.text.strip() if sku_tag else "SKU not found"
-
-        # Extract Price
-        price_tag = soup.select_one("span.value.cc-price")
-        product_price = float(price_tag.text.strip().replace("PKR ", "").replace(",", "")) if price_tag else None
-
-        return product_price, product_sku
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching product: {e}")
-        return None, None
-
-# Initialize SQLite Database
-def init_db():
-    conn = sqlite3.connect("config.db")
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS tracking (
-            product_url TEXT PRIMARY KEY,
-            min_price INTEGER,
-            max_price INTEGER,
-            sku TEXT
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-# Save data to SQLite
-def save_to_db(product_url, min_price, max_price, sku):
-    conn = sqlite3.connect("config.db")
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO tracking VALUES (?, ?, ?, ?)", 
-                   (product_url, min_price, max_price, sku))
-    conn.commit()
-    conn.close()
-
-# Initialize DB on startup
-init_db()
-
-# Streamlit UI
-st.title("🛍️ Khaadi Price Tracker")
-
-# Session state for tracking UI updates
+# Initialize session state variables
 if "price" not in st.session_state:
     st.session_state.price = None
 if "sku" not in st.session_state:
-    st.session_state.sku = ""
+    st.session_state.sku = None
 if "selected_range" not in st.session_state:
-    st.session_state.selected_range = (0, 0)
+    st.session_state.selected_range = None
 
-# User inputs product URL
-product_url = st.text_input("🔗 Enter Khaadi Product URL")
+# Streamlit UI
+st.title("🛍️ Khaadi Price Tracker")
+product_url = st.text_input("🔗 Enter Khaadi Product URL", "")
 
+# Database setup
+conn = sqlite3.connect("prices.db")
+c = conn.cursor()
+c.execute(
+    """CREATE TABLE IF NOT EXISTS prices (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                                          url TEXT, price TEXT, sku TEXT)"""
+)
+conn.commit()
+
+
+def get_price_and_sku(url):
+    """Scrapes the product price & SKU from Khaadi's website."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Linux; Android 11; Mobile) AppleWebKit/537.36"
+    }
+
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        st.write(f"🔍 Status Code: {response.status_code}")  # Debugging
+
+        if response.status_code != 200:
+            return None, None
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Extract price
+        price_element = soup.find("span", {"class": "price"})  # Update selector if needed
+        price = price_element.text.strip() if price_element else None
+
+        # Extract SKU
+        sku_element = soup.find("span", {"class": "sku"})
+        sku = sku_element.text.strip() if sku_element else None
+
+        return price, sku
+    except Exception as e:
+        st.error(f"⚠️ Error: {e}")
+        return None, None
+
+
+# Button Click Logic
 if st.button("Check Price"):
+    st.write("✅ Button Clicked!")  # Debugging
+
     if product_url:
         price, sku = get_price_and_sku(product_url)
+        st.write(f"💰 Scraped Price: {price}")  # Debugging
+        st.write(f"🆔 SKU: {sku}")  # Debugging
 
         if price:
-            min_price = int(price * 0.5)
-            max_price = int(price)
-
-            # Update session state
             st.session_state.price = price
             st.session_state.sku = sku
-            st.session_state.selected_range = (min_price, max_price)
+            st.session_state.selected_range = (int(float(price) * 0.5), int(float(price)))
 
-            # Save to database
-            save_to_db(product_url, min_price, max_price, sku)
+            # Store in database
+            c.execute("INSERT INTO prices (url, price, sku) VALUES (?, ?, ?)", (product_url, price, sku))
+            conn.commit()
 
-# Show details only after fetching price
+            st.success("✅ Price checked and saved!")
+            st.experimental_rerun()  # Force UI refresh
+        else:
+            st.warning("⚠️ Could not fetch the price. Try again!")
+    else:
+        st.warning("⚠️ Please enter a product URL!")
+
+# Display Last Saved Price
 if st.session_state.price:
-    st.success(f"✅ Current Price: {st.session_state.price} PKR")
-    st.info(f"🆔 SKU: {st.session_state.sku}")
+    st.subheader("🔍 Last Checked Price")
+    st.write(f"💰 **Price:** {st.session_state.price}")
+    st.write(f"🆔 **SKU:** {st.session_state.sku}")
 
-    # Price range slider
-    selected_range = st.slider(
-        "📉 Select Notification Price Range",
-        min_value=st.session_state.selected_range[0],
-        max_value=st.session_state.selected_range[1],
-        value=st.session_state.selected_range
-    )
-
-    # Update session state
-    st.session_state.selected_range = selected_range
-
-    # Start Tracking Button
-    if st.button("Start Tracking"):
-        save_to_db(product_url, selected_range[0], selected_range[1], st.session_state.sku)
-        st.success("✅ Tracking started! You'll be notified when the price is within range.")
+# Close DB connection
+conn.close()
