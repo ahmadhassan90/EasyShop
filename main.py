@@ -17,7 +17,7 @@ def get_price_and_sku(product_url):
 
         # Debugging: Print HTML content
         st.write("🔍 Debug: Showing partial HTML content")
-        st.code(soup.prettify()[:3000])  # Show first 3000 characters of HTML
+        st.code(soup.prettify()[:15000])  # Show first 3000 characters of HTML
         st.write("🔍 Debug: Fetched HTML content successfully.")
 
         # Extract SKU
